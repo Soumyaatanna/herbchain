@@ -36,7 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+async function main() {
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -44,7 +44,9 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // It's often better not to re-throw the error in production
+    // as it can crash the server. Logging is preferred.
+    console.error(err);
   });
 
   // importantly only setup vite in development and after
@@ -56,15 +58,19 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+  // Only listen if not in a Vercel environment
+  if (!process.env.VERCEL) {
+    const port = parseInt(process.env.PORT || '5000', 10);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+    }, () => {
+      log(`serving on port ${port}`);
+    });
+  }
+}
+
+main();
+
+// Export the app for Vercel
+export default app;
