@@ -1,11 +1,13 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import serverless from "serverless-http"; // ✅ new dependency
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// --- logging middleware ---
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -24,11 +26,7 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
+      if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
       log(logLine);
     }
   });
@@ -36,41 +34,28 @@ app.use((req, res, next) => {
   next();
 });
 
-async function main() {
-  const server = await registerRoutes(app);
+// --- async bootstrap ---
+async function bootstrap() {
+  await registerRoutes(app);
 
+  // error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     res.status(status).json({ message });
-    // It's often better not to re-throw the error in production
-    // as it can crash the server. Logging is preferred.
     console.error(err);
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (app.get("env") === "development") {
-    await setupVite(app, server);
+    await setupVite(app);
   } else {
     serveStatic(app);
   }
-
-  // Only listen if not in a Vercel environment
-  if (!process.env.VERCEL) {
-    const port = parseInt(process.env.PORT || '5000', 10);
-    server.listen({
-      port,
-      host: "0.0.0.0",
-    }, () => {
-      log(`serving on port ${port}`);
-    });
-  }
 }
 
-main();
+// Run bootstrap immediately
+bootstrap();
 
-// Export the app for Vercel
-export default app;
+// --- Export for Vercel ---
+export const handler = serverless(app); // ✅ serverless function
+export default handler;
